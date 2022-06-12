@@ -1,17 +1,29 @@
-//
-// @author andrii dobroshynskyi
-//
+/*
+@author andrii dobroshynski
+*/
 
-#ifndef RANDOM_FOREST_C_EVAL_H
-#define RANDOM_FOREST_C_EVAL_H
+#ifndef eval_h
+#define eval_h
 
-#include "../model/model.h"
+#include "../model/tree.h"
+#include "../model/forest.h"
 #include "../utils/utils.h"
+#include "../utils/data.h"
 
-float* get_class_labels_from_fold(float** fold, int rows_in_fold, int cols);
-float** get_training_folds(float*** folds, int n_folds, int selected_test_fold, int rows, int cols);
+/*
+Runs a hyperparameter search across a number of pre-defined parameters for the random forest model and
+reports the best parameters. Calls 'cross_validate' on each parameter configuration to get the cross validation
+accuracy for each set-up. Can be adjusted to run across as many parameters as needed.
+*/
+void hyperparameter_search(double **data, struct dim *csv_dim);
 
-struct RF_params grid_search(float** data, struct dim data_dim);
-double cross_validation(float** data, struct RF_params params, int rows, int cols, int k_folds);
+/*
+Runs k-fold cross validation on the 'data' and returns the accuracy. In the process builds up a random
+forest model for each iteration and evaluates on a separate test fold.
+*/
+double cross_validate(double **data,
+                      const RandomForestParameters *params,
+                      const struct dim *csv_dim,
+                      const int k_folds);
 
-#endif //RANDOM_FOREST_C_EVAL_H
+#endif // eval_h

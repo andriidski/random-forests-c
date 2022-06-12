@@ -1,100 +1,113 @@
-//
-// @author andrii dobroshynskyi
-//
+/*
+@author andrii dobroshynski
+*/
 
 #include "utils.h"
 
-//
-// flag for verbose output
-//
-int verbose = 0;
-
-//
-// memory management
-//
-
-// create a 2D array equivalent to a nxm matrix
-//
-float** create_array_2d(int n, int m)
+int get_log_level()
 {
-    float* values = calloc(m * n, sizeof(float));
-    float** rows = malloc(n * sizeof(float*));
-    for(int i = 0; i < n; i++) {
-        rows[i] = values + i * m;
-    }
-    return rows;
+    return log_level;
 }
 
-//
-// free any 2D array
-//
-void destroy_array_2d(float** arr)
+void set_log_level(int selected_log_level)
 {
-    free(*arr);
-    free(arr);
-}
-
-//
-// performance metrics calculation utilities
-//
-double average_accuracy(double* accuracy_vector, int n)
-{
-    double total = 0;
-    for(int i=0; i < n; i++)
+    if (selected_log_level < 0 || selected_log_level > 3)
     {
-        total += accuracy_vector[i];
+        printf("Error: log_level must be in range [0, 3] got: %d\n", selected_log_level);
+        exit(1);
     }
-    return total/n;
+    log_level = selected_log_level;
 }
 
-double get_accuracy(int n, float* actual, float* prediction)
+int contains_int(int *arr, size_t n, int val)
 {
-    int correct = 0;
-    for(int i=0; i < n; i++)
+    for (size_t i = 0; i < n; ++i)
     {
-        if(actual[i] == prediction[i]) correct++;
-    }
-    return (correct * 1.0 / n * 1.0) * 1.0;
-}
-
-//
-// utilities for array management
-//
-int contains_int(int* arr, int n, int val)
-{
-    for(int i=0; i < n; i++)
-    {
-        if(arr[i] == val) return 1;
-    }
-    return 0;
-}
-int contains_float(float* arr, int n, float val)
-{
-    for(int i=0; i < n; i++)
-    {
-        if(arr[i] == val) return 1;
+        if (arr[i] == val)
+            return 1;
     }
     return 0;
 }
 
-//
-// utility to merge two arrays into one
-//
-float** combine_arrays(float** first, float** second, int n1, int n2, int cols)
+int is_row_part_of_testing_fold(int row, const ModelContext *ctx)
 {
-    float** combined = (float**) malloc((n1 + n2) * sizeof(float) * cols);
+    size_t lower_bound = ctx->testingFoldIdx * ctx->rowsPerFold;
+    size_t upper_bound = lower_bound + ctx->rowsPerFold;
+
+    if (row >= lower_bound && row <= upper_bound)
+        return 1;
+    else
+        return 0;
+}
+
+double **combine_arrays(double **first, double **second, size_t n1, size_t n2, size_t cols)
+{
+    double **combined = (double **)malloc((n1 + n2) * sizeof(double) * cols);
     int row_index = 0;
-    for(int i=0; i < n1; i++)
+    for (size_t i = 0; i < n1; ++i)
     {
-        float* row = first[i];
-        combined[row_index] = row;
-        row_index++;
+        double *row = first[i];
+        combined[row_index++] = row;
     }
-    for(int j=0; j < n2; j++)
+    for (size_t j = 0; j < n2; ++j)
     {
-        float* row = second[j];
-        combined[row_index] = row;
-        row_index++;
+        double *row = second[j];
+        combined[row_index++] = row;
     }
     return combined;
+}
+
+double **_2d_malloc(const size_t rows, const size_t cols)
+{
+    double **data;
+    double *ptr;
+
+    int len = sizeof(double *) * rows + sizeof(double) * cols * rows;
+    data = (double **)malloc(len);
+
+    ptr = (double *)(data + rows);
+
+    for (size_t i = 0; i < rows; ++i)
+        data[i] = ptr + cols * i;
+
+    return data;
+}
+
+double **_2d_calloc(const size_t rows, const size_t cols)
+{
+    double **data;
+    double *ptr;
+
+    int len = sizeof(double *) * rows + sizeof(double) * cols * rows;
+    data = (double **)calloc(len, sizeof(double));
+
+    ptr = (double *)(data + rows);
+
+    for (size_t i = 0; i < rows; ++i)
+        data[i] = ptr + cols * i;
+
+    return data;
+}
+
+double _1d_checksum(double *data, size_t size)
+{
+    double sum = 0;
+    for (size_t i = 0; i < size; ++i)
+    {
+        sum += data[i];
+    }
+    return sum;
+}
+
+double _2d_checksum(double **data, size_t rows, size_t cols)
+{
+    double sum = 0;
+    for (size_t i = 0; i < rows; ++i)
+    {
+        for (size_t j = 0; j < cols; ++j)
+        {
+            sum += data[i][j];
+        }
+    }
+    return sum;
 }

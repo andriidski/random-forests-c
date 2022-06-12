@@ -1,126 +1,159 @@
-//
-// @author andrii dobroshynskyi
-//
+/*
+@author andrii dobroshynski
+*/
 
+#include <stdio.h>
 #include <stdlib.h>
 #include "eval.h"
 
-//
-// runs a grid search over the random forest fitted on the data
-//
-// selects the best parameters based on a cross-validation accuracy score
-// from a list of parameters to choose from
-//
-struct RF_params grid_search(float** data, struct dim data_dim)
+void hyperparameter_search(double **data, struct dim *csv_dim)
 {
-    int n = 3;
+    // Init the options for number of trees to: 10, 100, 1000.
+    size_t n = 3;
 
-    // init the options for number of trees to: 10, 100, 1000
-    int* n_estimators = malloc(sizeof(int) * n);
-    n_estimators[0] = 10;
-    n_estimators[1] = 50;
-    n_estimators[2] = 100;
+    size_t *estimators = malloc(sizeof(size_t) * n);
+    estimators[0] = 10;
+    estimators[1] = 50;
+    estimators[2] = 100;
 
-    // init the options for the max depth for a tree to: 3, 7, 10
-    int* max_depths = malloc(sizeof(int) * n);
+    // Init the options for the max depth for a tree to: 3, 7, 10.
+    size_t *max_depths = malloc(sizeof(size_t) * n);
     max_depths[0] = 3;
     max_depths[1] = 7;
     max_depths[2] = 10;
 
-    // defaults based on SKLearn's defaults / hand picked in order to compare performance with same parameters
-    int max_features = 3;
-    int min_samples_leaf = 2;
-    int max_depth = 7;
-    int ratio = 1; // don't withhold any data when sampling
+    // Defaults based on SKLearn's defaults / hand picked in order to compare performance
+    // with the same parameters.
+    size_t max_features = 3;
+    size_t min_samples_leaf = 2;
+    size_t max_depth = 7;
 
-    // number of folds for cross validation
-    int k_folds = 5;
+    // Number of folds for cross validation.
+    size_t k_folds = 5;
 
-    // best params from grid search
+    // Best params computed from running the hyperparameter search.
+    size_t best_n_estimators = -1;
     double best_accuracy = -1;
-    int best_n_estimators = -1;
 
-    // grid search across the parameters
-    for(int i=0; i < n; i++)
+    for (size_t i = 0; i < n; ++i)
     {
-        // variable parameters
-        int trees = n_estimators[i];
+        size_t n_estimators = estimators[i]; /* Number of trees in the forest. */
 
-        struct RF_params params = {n_estimators:trees, max_depth:max_depth, min_samples_leaf:min_samples_leaf, max_features:max_features, sampling_ratio:ratio};
-        double accuracy_for_params = cross_validation(data, params, data_dim.rows, data_dim.cols, k_folds);
-
-        // update best accuracy and best parameters found so far from grid search
-        if(accuracy_for_params > best_accuracy)
+        for (size_t j = 0; j < n; ++j)
         {
-            best_accuracy = accuracy_for_params;
-            best_n_estimators = trees;
+            size_t max_depth = max_depths[j];
+
+            RandomForestParameters params = {
+                n_estimators : n_estimators,
+                max_depth : max_depth,
+                min_samples_leaf : min_samples_leaf,
+                max_features : max_features
+            };
+
+            if (log_level > 0)
+            {
+                printf("[hyperparameter search] running cross_validate\n");
+                printf("[hyperparameter search] ");
+                print_params(&params);
+            }
+
+            double cv_accuracy = cross_validate(data,
+                                                &params,
+                                                csv_dim,
+                                                k_folds);
+
+            if (log_level > 0)
+                printf("[hyperparameter search] cross validation accuracy: %f%% (%ld%%)\n",
+                       (cv_accuracy * 100),
+                       (long)(cv_accuracy * 100));
+
+            // Update best accuracy and best parameters found so far from the hyperparameter search.
+            if (cv_accuracy > best_accuracy)
+            {
+                best_accuracy = cv_accuracy;
+                best_n_estimators = n_estimators;
+            }
         }
     }
-    // free aux arrays
-    free(n_estimators);
+
+    // Free auxillary buffers.
+    free(estimators);
     free(max_depths);
 
-    return (struct RF_params){n_estimators:best_n_estimators, max_depth:max_depth, min_samples_leaf:min_samples_leaf, max_features:max_features, sampling_ratio:ratio};
+    printf("[hyperparameter search] run complete\n  best_accuracy: %f\n  best_n_estimators (trees): %ld\n",
+           best_accuracy, best_n_estimators);
 }
 
-//
-// k-fold Cross Validation for preliminary evaluation of the random forest on the available test/train data
-// splits the data set provided into k equal folds and grows k forests
-//
-double cross_validation(float** data, struct RF_params params, int rows, int cols, int k_folds)
+double eval_model(const DecisionTreeNode **random_forest,
+                  double **data,
+                  const RandomForestParameters *params,
+                  const struct dim *csv_dim,
+                  const ModelContext *ctx)
 {
-    // data set split into k folds
-    float*** folds = k_fold_split(rows, cols, data, k_folds);
-    int rows_per_fold = rows / k_folds;
+    // Keeping track of how many predictions have been correct. Accuracy can be
+    // computed with 'num_correct' / 'rowsPerFold' (or how many predictions we make).
+    long num_correct = 0;
 
-    // score for each grown forest
-    double* scores = malloc(k_folds * sizeof(double));
-
-    for(int i=0; i < k_folds; i++)
+    // Since we are evaluating the model on a single fold (to control overfitting), we start
+    // iterating the rows for which we are getting predictions at an offset that can be computed
+    // as 'testingFoldIdx * rowsPerFold' and make predictions for 'rowsPerFold' number of rows
+    size_t row_id_offset = ctx->testingFoldIdx * ctx->rowsPerFold;
+    for (size_t row_id = row_id_offset; row_id < row_id_offset + ctx->rowsPerFold; ++row_id)
     {
-        float** training = get_training_folds(folds, k_folds, i, rows, cols);
-        float** test = folds[i];
-        // grow the forest on all folds but one
-        struct Node** rf = fit_model(training, params, rows - rows_per_fold, cols);
+        int prediction = predict_model(&random_forest,
+                                       params->n_estimators,
+                                       data[row_id]);
+        int ground_truth = (int)data[row_id][csv_dim->cols - 1];
 
-        // get predictions from the forest
-        float* predictions = get_predictions(test, rows_per_fold, rf, params.n_estimators);
-        // get actual labels
-        float* actual = get_class_labels_from_fold(test, rows_per_fold, cols);
-        double accuracy = get_accuracy(rows_per_fold, actual, predictions);
-        scores[i] = accuracy;
-        
-        free(actual);
-        free(predictions);
+        if (log_level > 1)
+            printf("majority vote: %d | %d ground truth\n", prediction, ground_truth);
+
+        if (prediction == ground_truth)
+            ++num_correct;
     }
-    return average_accuracy(scores, k_folds);
+    return (double)num_correct / (double)ctx->rowsPerFold;
 }
 
-float* get_class_labels_from_fold(float** fold, int rows_in_fold, int cols)
+double cross_validate(double **data,
+                      const RandomForestParameters *params,
+                      const struct dim *csv_dim,
+                      const int k_folds)
 {
-    float* class_labels = malloc(rows_in_fold * sizeof(float));
-    for(int i=0; i < rows_in_fold; i++)
-    {
-        float* row = fold[i];
-        class_labels[i] = row[cols-1];
-    }
-    return class_labels;
-}
+    // Sum of all accuracies on every evaluated fold.
+    double sumAccuracy = 0;
 
-float** get_training_folds(float*** folds, int n_folds, int selected_test_fold, int rows, int cols)
-{
-    int count_per_fold = rows / n_folds;
-    float** training_folds = malloc((rows - count_per_fold) * cols * sizeof(float));
-    int count = 0;
-    for(int i=0; i < n_folds; i++)
+    // Iterate through the fold indeces and fit models on the selections. The current 'foldIdx' is the index
+    // of the fold in the array of all loaded data that is the fold that's currently the test fold, with all of
+    // the other folds being used for training.
+    for (size_t foldIdx = 0; foldIdx < k_folds; ++foldIdx)
     {
-        if(i == selected_test_fold) continue;
-        float** fold = folds[i];
-        for(int j=0; j < count_per_fold; j++)
-        {
-            training_folds[count] = fold[j];
-            count++;
-        }
+        const ModelContext ctx = (ModelContext){
+            testingFoldIdx : foldIdx /* Fold to use for evaluation. */,
+            rowsPerFold : csv_dim->rows / k_folds /* Number of rows per fold. */
+        };
+
+        // Train an instance of the model with every fold of data except of the fold indentified by
+        // 'foldIdx' used for training the the 'foldIdx' fold withheld from training in order to be
+        // used for evaluation.
+        const DecisionTreeNode **random_forest = (const DecisionTreeNode **)train_model(
+            data,
+            params,
+            csv_dim,
+            &ctx);
+
+        // Evaluate the model that was just trained. We use the fold identified by 'foldIdx' to evaluate
+        // the model.
+        const double accuracy = eval_model(
+            random_forest /* Model to evaluate. */,
+            data,
+            params,
+            csv_dim,
+            &ctx);
+        sumAccuracy += accuracy;
+
+        // Free memory that was used to store the model.
+        free_random_forest(&random_forest, params->n_estimators);
     }
-    return training_folds;
+
+    return sumAccuracy / k_folds;
 }

@@ -1,58 +1,78 @@
 # Random Forests - C
-Basic implementation of random forests and accompanying decision trees in C
+A proof of concept basic implementation of random forests for classification and accompanying decision trees in C.
 
 ## Running the code
+
+Fastest way to start experimenting is to
+- (1) run the `data.py` script to generate some random CSV data
+- (2) compile as preferred (optionally using the `CMakeLists.txt` provided)
+- (3) run `./random-forests-c <path_to_csv_file>` or `./random-forests-c --help` to see which arguments are available to configure.
+
+The [`main.c`](./main.c) file contains an example configuration of a random forest and code to run `cross_validate()` which will both train and evaluate a model.
+
 ### Training
-A model can be trained on a dataset with the `fit_model()` function that takes the following parameters:
-- `float** training_data` - a 2D matrix of training data (equivalent to a DataFrame in Python)
-- `struct RF_params params` - a custom struct that holds the parameters to customize the Random Forest
-- `int rows`, `int cols` - row x col dimensions of the training data matrix
 
-Example:
+The `cross_validate()` function runs k-fold cross validation on whatever data is provided -- first trains the model and then evaluates it on every of the testing folds.
 
+The main function that handles model training is `train_model()`
 ```c
-struct RF_params params = {
-    n_estimators: 10, 
-    max_depth: 7, 
-    min_samples_leaf: 3, 
-    max_features: 3, 
-    sampling_ratio: 1
+const DecisionTreeNode **train_model(double **data,
+                                     const RandomForestParameters *params,
+                                     const struct dim *csv_dim,
+                                     const ModelContext *ctx);
+```
+It returns an array of `DecisionTreeNode` pointers to roots of decision trees comprising the forest, and the parameters are
+
+- `**training_data` - training data (equivalent to a DataFrame in Python).
+- `*params` - pointer to struct that holds the configuration of a random forest model.
+- `*csv_dim` - pointer to a struct holding row x col dimensions of the read data.
+- `*ctx` - pointer to a context object that holds some optional data that can be used for training / evaluation.
+
+For example:
+```c
+const ModelContext ctx = (ModelContext){
+    testingFoldIdx : foldIdx /* Fold to use for evaluation. */,
+    rowsPerFold : csv_dim->rows / k_folds /* Number of rows per fold. */
 };
-struct Node** model = fit_model(data, params, rows, cols);
+
+const DecisionTreeNode **random_forest = (const DecisionTreeNode **)train_model(
+    data,
+    params,
+    csv_dim,
+    &ctx);
 ```
 
-Training a Random Forest model of 10 estimators (trees), with a max depth of 7 for a single decision tree, min features on split of 3. The last parameter is used for growing a single decision tree when we want to omit some data when sampling.
+### Evaluation
 
-### Predicting
-
-After training, predictions can be made with the `get_predictions()` function that takes the following parameters:
-- `float** test_data` - dataset to predict on
-- `int rows_test` - the number of rows in the dataset that we are predicting for
-- `struct Node** trees` - the trained Random Forest model
-- `int n_estimators` - number of estimators (trees) in the trained Random Forest model
-
-Additionally, true class values can be extracted from the training dataset with the function `get_class_labels_from_fold()`, 
-and the accuracy of the predictions can be computed with a utility function `get_accuracy()` 
-
-Example:
+After training we can evaluate the model with `eval_model()` which returns an accuracy measure for model performance.
+For example:
 
 ```c
-float* predictions = get_predictions(data, rows, model, params.n_estimators);
-float* actual = get_class_labels_from_fold(data, rows, cols);
-
-double accuracy = get_accuracy(rows, actual, predictions);
-printf("\naccuracy: %.20f\n",accuracy);
+// Evaluate the model that was just trained. We use the fold identified by 'foldIdx' in 'ctx' to evaluate the model.
+double accuracy = eval_model(
+    random_forest /* Model to evaluate. */,
+    data,
+    params,
+    csv_dim,
+    &ctx);
 ```
 
+## Code structure
 
-Making predictions with the model trained in previous step (Training), and evaluating the accuracy of the predictions
+- `model` -- random forest and decision trees.
+- `eval` -- evaluation code for running `cross_validate()` or `hyperparameter_search()` to test the model.
+- `utils` -- utilities for data management, argument parsing, etc.
 
-
-## Project structure
-The project is organized into:
-- model (RFs and decision trees)
-- evaluation code for performing tasks like grid search or cross-validation
-- utilities for data management
+The optional arguments to the program (can be viewed by running with a `--help` flag)
+```
+  -c, --num_cols=number      Optional number of cols in the input CSV_FILE, if
+                             known
+  -r, --num_rows=number      Optional number of rows in the input CSV_FILE, if
+                             known
+  -l, --log_level=number     Optional debug logging level [0-3]. Level 0 is no
+                             output, 3 is most verbose. Defaults to 1.
+  -s, --seed=number          Optional random number seed.
+```
 
 ## Reference
 Breiman, Leo. "Random forests." Machine learning 45.1 (2001): 5-32.

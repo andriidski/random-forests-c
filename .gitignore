@@ -4,6 +4,8 @@
 # Project-specific
 *.csv
 .DS_Store
+/build
+/.vscode
 
 # User-specific stuff
 .idea/**/workspace.xml
