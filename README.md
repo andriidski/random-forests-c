@@ -10,10 +10,17 @@ A model can be trained on a dataset with the `fit_model()` function that takes t
 
 Example:
 
-`struct RF_params params = {n_estimators:10, max_depth:7, min_samples_leaf:3, max_features:3, sampling_ratio:1};`
+```c
+struct RF_params params = {
+    n_estimators: 10, 
+    max_depth: 7, 
+    min_samples_leaf: 3, 
+    max_features: 3, 
+    sampling_ratio: 1
+};
+struct Node** model = fit_model(data, params, rows, cols);
+```
 
-`struct Node** model = fit_model(data, params, rows, cols);`
-u
 Training a Random Forest model of 10 estimators (trees), with a max depth of 7 for a single decision tree, min features on split of 3. The last parameter is used for growing a single decision tree when we want to omit some data when sampling.
 
 ### Predicting
@@ -29,7 +36,7 @@ and the accuracy of the predictions can be computed with a utility function `get
 
 Example:
 
-```
+```c
 float* predictions = get_predictions(data, rows, model, params.n_estimators);
 float* actual = get_class_labels_from_fold(data, rows, cols);
 
