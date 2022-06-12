@@ -29,13 +29,14 @@ and the accuracy of the predictions can be computed with a utility function `get
 
 Example:
 
-`float* predictions = get_predictions(data, rows, model, params.n_estimators);`
+```
+float* predictions = get_predictions(data, rows, model, params.n_estimators);
+float* actual = get_class_labels_from_fold(data, rows, cols);
 
-`float* actual = get_class_labels_from_fold(data, rows, cols);`
+double accuracy = get_accuracy(rows, actual, predictions);
+printf("\naccuracy: %.20f\n",accuracy);
+```
 
-`double accuracy = get_accuracy(rows, actual, predictions);`
-
-`printf("\naccuracy: %.20f\n",accuracy);`
 
 Making predictions with the model trained in previous step (Training), and evaluating the accuracy of the predictions
 
